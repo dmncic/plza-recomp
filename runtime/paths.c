@@ -12,6 +12,7 @@
 #include <windows.h>
 #endif
 
+#include "gameicon.h"
 #include "gamelib.h"
 #include "paths.h"
 #include "platform.h"
@@ -226,10 +227,11 @@ unsigned long long rt_game_files_size(const char *game_dir) {
     return n;
 }
 
-// Window / Dock icon: icon.png shipped next to the exe or in the .app, else the source tree's (docs/icon).
+// Window / Dock icon: the game's own (<data root>/icon.png, taken from the player's game files: runtime/gameicon.c),
+// else icon.png shipped next to the exe or in the .app, else the source tree's (docs/icon).
 void rt_window_icon(SDL_Window *w) {
     char p[1100];
-    if (!rt_resource("icon.png", "docs/icon/icon_1024.png", p, sizeof p)) return;
+    if (!gameicon_path(p, sizeof p) && !rt_resource("icon.png", "docs/icon/icon_1024.png", p, sizeof p)) return;
     SDL_Surface *s = SDL_LoadPNG(p);
     if (s) SDL_SetWindowIcon(w, s), SDL_DestroySurface(s);
 }

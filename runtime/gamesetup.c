@@ -21,6 +21,7 @@
 #endif
 
 #include "gamebuild.h"
+#include "gameicon.h"
 #include "gamelib.h"
 #include "hle.h"
 #include "nxpkg.h"
@@ -253,6 +254,13 @@ static bool from_packages(void) {
         ok = false, read_err = !strstr(why, "can't");  // (else: the image couldn't be written - disk space)
     }
     if (ok && nxpkg_write_dlc(p, ROOT "/dlc.bin", why, sizeof why)) LOG("[setup] add-on content written\n");
+    if (ok) {  // (the game's own icon: the window, the start screen and the menu entry show it - runtime/gameicon.c)
+        size_t in = 0;
+        char iw[300] = "";
+        uint8_t *ib = nxpkg_read_icon(p, &in, iw, sizeof iw);
+        if (!ib || !gameicon_save(ib, in)) LOG("[setup] icon: %s\n", ib ? "not written" : iw);
+        free(ib);
+    }
     nxpkg_close(p);
     if (!ok) g_state = read_err ? SETUP_FAIL_UNPACK : SETUP_FAIL_COPY;
     return ok;
@@ -408,6 +416,7 @@ static void *setup_thread(void *arg) {
         snprintf(game, sizeof game, "%.*s", sl ? (int)(sl - f.exefs) : 1, sl ? f.exefs : ".");
         sl = strrchr(game, '/');
         snprintf(up, sizeof up, "%.*s", sl ? (int)(sl - game) : 2, sl ? game : "..");
+        if (!gameicon_from_folder(game) && !gameicon_from_folder(g_folder)) LOG("[setup] icon: no icon_*.dat in %s or its control/\n", game);
         if (dlc_dir(game, false, dlc, sizeof dlc) || dlc_dir(g_folder, false, dlc, sizeof dlc) || dlc_dir(up, true, dlc, sizeof dlc)) {
             char why[256] = "";
             if (romfs_build(dlc, ROOT "/dlc.bin", NULL, why, sizeof why)) LOG("[setup] add-on content: %s\n", dlc);

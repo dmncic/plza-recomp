@@ -54,6 +54,9 @@ bool nxpkg_write_romfs(NxPkg *p, int upd, const char *out, void (*progress)(uint
                        size_t why_size);
 // Writes the add-on content's RomFS image (the first found for the title) to out; false = none found or failed.
 bool nxpkg_write_dlc(NxPkg *p, const char *out, char *why, size_t why_size);
+// The game's own icon from its control content (a 256x256 JPEG, icon_AmericanEnglish.dat first): malloc'd bytes, their
+// count in *size; NULL = none (why says).
+uint8_t *nxpkg_read_icon(NxPkg *p, size_t *size, char *why, size_t why_size);
 
 #ifdef __cplusplus
 }

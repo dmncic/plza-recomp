@@ -34,6 +34,7 @@
 
 extern "C" void vk_describe_gpu(char *name, size_t n, int *vram_gb, bool *integrated);  // nvn/vulkan/device.c
 extern "C" {
+#include "gameicon.h"
 #include "gamesetup.h"
 #include "nxpkg.h"
 #include "cheats.h"
@@ -487,6 +488,7 @@ static void game_files_pickers(SDL_Window *win, bool ready) {
     for (int i = 0; i < PICK_CHEATS; i++)
         if (take(g_pick_file[i], got, sizeof got)) snprintf(g_files[i], sizeof g_files[i], "%s", got), changed = true;
     if (changed) files_save();
+    if (changed && !setup_running()) gameicon_fetch_start(g_files[PICK_BASE], g_files[PICK_KEYS]);  // (no icon yet: the base game's)
     // prod.keys: the one picked, else where it would be found (beside the base game, ~/.switch, the emulators')
     static char auto_keys[1024];
     static char auto_for[1024] = "\x01";
@@ -998,7 +1000,25 @@ static void prism_tower(ImDrawList *d, float cx, float ground, float H, float t)
 }
 
 // The launcher's banner: a city at night around Prism Tower, its lights twinkling, and the title
+// The game's own icon in the banner, once the game files are set up (runtime/gameicon.c: taken from the player's own
+// packages); reloaded when it changes - with the window's icon
+extern "C" uint64_t vk_imgui_texture_rgba(const void *rgba, int w, int h);
+static uint64_t g_icon_tex;
+static unsigned g_icon_gen;
+static void icon_refresh(void) {
+    unsigned gen = gameicon_generation();
+    if (gen == g_icon_gen) return;
+    g_icon_gen = gen;
+    char p[1100];
+    if (!gameicon_path(p, sizeof p)) return;
+    SDL_Surface *s = SDL_LoadPNG(p), *r = s ? SDL_ConvertSurface(s, SDL_PIXELFORMAT_RGBA32) : NULL;
+    if (r && r->pitch == r->w * 4 && r->w <= 1024 && r->h <= 1024) g_icon_tex = vk_imgui_texture_rgba(r->pixels, r->w, r->h);
+    SDL_DestroySurface(r), SDL_DestroySurface(s);
+    rt_window_icon(ui_window());  // (the window opened with the icon there was then)
+}
+
 static void banner(ImDrawList *d, ImVec2 a, ImVec2 b, float t) {
+    icon_refresh();
     d->PushClipRect(a, b, true);
     banner_sky(d, a, b);
     float w = b.x - a.x, h = b.y - a.y, cx = a.x + w * 0.66f, base = b.y - h * 0.16f;
@@ -1027,9 +1047,18 @@ static void banner(ImDrawList *d, ImVec2 a, ImVec2 b, float t) {
     d->AddRectFilledMultiColor(ImVec2(a.x, base), b, IM_COL32(8, 9, 20, 0), IM_COL32(8, 9, 20, 0), IM_COL32(8, 9, 20, 255),
                                IM_COL32(8, 9, 20, 255));  // (the street fades into the status strip)
     ImFont *tf = g_title_font ? g_title_font : ImGui::GetFont(), *bf = g_button_font ? g_button_font : ImGui::GetFont();
-    d->AddText(tf, 120, ImVec2(a.x + 40, a.y + 28), IM_COL32(245, 248, 255, 255), "PL:Z-A");
+    float tx = a.x;
+    if (g_icon_tex) {  // (the game's icon left of the title, rounded like the Switch's HOME menu tiles; the line below
+                       // stays where it was, clear of the tower)
+        const float sz = 120, x0 = a.x + 44, y0 = a.y + 36;
+        d->AddRectFilled(ImVec2(x0 - 3, y0 - 3), ImVec2(x0 + sz + 3, y0 + sz + 3), IM_COL32(0, 0, 0, 110), 18);
+        d->AddImageRounded((ImTextureID)g_icon_tex, ImVec2(x0, y0), ImVec2(x0 + sz, y0 + sz), ImVec2(0, 0), ImVec2(1, 1),
+                           IM_COL32_WHITE, 16);
+        tx += sz + 22;
+    }
+    d->AddText(tf, 120, ImVec2(tx + 40, a.y + 28), IM_COL32(245, 248, 255, 255), "PL:Z-A");
     const char *sub = "R  E  C  O  M  P";
-    d->AddText(bf, 34, ImVec2(a.x + 46, a.y + 128), k_accent, sub);
+    d->AddText(bf, 34, ImVec2(tx + 46, a.y + 128), k_accent, sub);
     d->AddText(ImGui::GetFont(), ImGui::GetFontSize(), ImVec2(a.x + 46, a.y + 174), IM_COL32(170, 180, 205, 255),
                "Pokémon Legends: Z-A, recompiled for PC");
     d->PopClipRect();
@@ -1267,6 +1296,9 @@ extern "C" void launcher_lg_run(const char *root) {
     }
     const char *keys_test = getenv("LARECOMP_LAUNCHER_KEYS");
     if (keys_test && atoi(keys_test) > 0) bind_capture_begin(BIND_DEV_KEY, atoi(keys_test));
+    if (!g_files_loaded) files_load();
+    // (a game set up before the icon was taken: the base game picked then - when it is still there - gives it now)
+    if (!getenv("LARECOMP_SETUP_DIR") && !getenv("LARECOMP_SETUP_FILES")) gameicon_fetch_start(g_files[PICK_BASE], g_files[PICK_KEYS]);
     if (getenv("LARECOMP_SETUP_DIR")) setup_start(getenv("LARECOMP_SETUP_DIR"));
     else if (setup_code_stale()) {  // (an updated app: the game code built again from the files set up already)
         fprintf(stderr, "[launcher] the game code is another version's: building it again\n");

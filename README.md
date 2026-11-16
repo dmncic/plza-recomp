@@ -124,6 +124,12 @@ decompressed first: `nsz -D file.nsz`.
 
 Your picks are remembered. Your dump files are only read, never changed - you can delete or move them afterwards.
 
+The setup also takes **the game's own icon** from your base game package (or `icon_AmericanEnglish.dat` beside an
+extracted dump, or in its `control/` folder) and uses it for the window and title bar, the launcher's header and the
+`--install` menu entry. The AppImage ships no game artwork: until the game is set up you see the app's own icon. A
+game set up with an earlier version gets the icon on the next start, as long as the base game package you picked is
+still where it was.
+
 **Already extracted files** work too: under *Or: already extracted files* click **Select game folder…** and pick the
 folder with `exefs` (`main`, `sdk`, `main.npdm`) and `romfs` (`arc/data.trpfs`) of 2.0.2 - or one flat folder with
 `main`, `sdk`, `main.npdm` and `arc/` side by side, as some tools extract it.
@@ -227,7 +233,8 @@ Game files, saves, settings, cheats, mods, shader caches and the log `lasrecomp.
   versions, which keep using it (to move one: move that folder next to the AppImage and rename it `ZARecomp-data`);
 - or set `LARECOMP_DATA_ROOT=/some/folder`.
 
-`--install` copies the AppImage to `~/Applications`; its menu entry keeps using the data folder you had.
+`--install` copies the AppImage to `~/Applications`; its menu entry keeps using the data folder you had, and shows
+the game's icon once the game is set up.
 
 | Path | What |
 |---|---|
@@ -235,6 +242,7 @@ Game files, saves, settings, cheats, mods, shader caches and the log `lasrecomp.
 | `save/save_0/main` | your save (PKHeX opens it) |
 | `cheats/` | `B1F12FD919EAE86A.txt`, `notes.txt`, `enabled.txt` |
 | `larecomp.ini` | settings |
+| `icon.png` | the game's icon, taken from your base game package |
 | `lasrecomp.log` / `lasrecomp-prev.log` | the log of this / the previous run |
 | `mods/`, `plugins/`, `lua/` | mods, plugins, Lua scripts |
 

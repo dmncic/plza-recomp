@@ -847,6 +847,47 @@ bool nxpkg_write_dlc(NxPkg *P, const char *path, char *why, size_t wn) {
     return close_out(o, copy_sec(P, n, s, off, size, &w, why, wn), path, why, wn);
 }
 
+// The game's own icon, from the control content (its RomFS: control.nacp and one icon_<language>.dat per language, a
+// 256x256 JPEG): icon_AmericanEnglish.dat, else the first icon_*. The base game's control content first (a whole RomFS),
+// then an update's (patched ones skipped). Malloc'd bytes and their size, NULL = none (why says).
+uint8_t *nxpkg_read_icon(NxPkg *P, size_t *size, char *why, size_t wn) {
+    why[0] = 0;
+    for (int pass = 0; pass < 2; pass++)  // (0: the base game's, 1: an update's - program id | 0x800)
+        for (int i = 0; i < P->nnca; i++) {
+            Nca *n = &P->ncas[i];
+            if (n->type != 2 || (n->id & ~0x800ull) != P->title || (pass == 1) != !!(n->id & 0x800)) continue;
+            uint64_t l6, l6size;
+            int s = find_romfs(n, &l6, &l6size);
+            if (s < 0 || !sec_ok(n, s, why, wn) || fs_header(n, s)[4] == 4 || l6size < 0x50) continue;
+            uint8_t h[0x50];
+            if (!sec_read(P, n, s, l6, h, sizeof h, why, wn)) continue;
+            uint64_t moff = u64(h + 0x38), msize = u64(h + 0x40), doff = u64(h + 0x48);
+            if (u64(h) != 0x50 || msize > (1u << 20) || moff + msize > l6size) continue;
+            uint8_t *m = malloc(msize ? msize : 1);
+            if (!m || !sec_read(P, n, s, l6 + moff, m, msize, why, wn)) { free(m); continue; }
+            uint64_t best_off = 0, best_size = 0;
+            int best = 0;  // (2: American English, 1: another language)
+            for (uint64_t e = 0; e + 0x20 <= msize && best < 2;) {  // (file entries: parent, sibling, offset, size, hash, name)
+                uint64_t fo = u64(m + e + 8), fs = u64(m + e + 16);
+                uint32_t nl = u32(m + e + 0x1C);
+                if (nl > 0x300 || e + 0x20 + nl > msize) break;
+                const char *name = (const char *)m + e + 0x20;
+                bool icon = nl > 9 && !memcmp(name, "icon_", 5) && !memcmp(name + nl - 4, ".dat", 4);
+                int rank = !icon ? 0 : nl == 24 && !memcmp(name, "icon_AmericanEnglish.dat", 24) ? 2 : 1;
+                if (rank > best && fs > 0 && fs <= (1u << 20) && doff + fo + fs <= l6size) best = rank, best_off = doff + fo, best_size = fs;
+                e += 0x20 + ((nl + 3) & ~3u);
+            }
+            free(m);
+            if (!best) { snprintf(why, wn, "no icon in the control content of %016llx", (unsigned long long)n->id); continue; }
+            uint8_t *icon = malloc(best_size);
+            if (!icon || !sec_read(P, n, s, l6 + best_off, icon, best_size, why, wn)) { free(icon); continue; }
+            *size = best_size;
+            return icon;
+        }
+    if (!why[0]) snprintf(why, wn, "no control content for %016llx in the packages", (unsigned long long)P->title);
+    return NULL;
+}
+
 // ------------------------------------------------------------------ opening
 uint64_t nxpkg_title(const NxPkg *P) { return P->title; }
 int nxpkg_update_count(const NxPkg *P) { return P->nupd; }

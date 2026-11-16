@@ -114,7 +114,7 @@ Exec=AppRun %U
 Icon=zarecomp
 Terminal=false
 Categories=Game;
-StartupWMClass=lasrecomp
+StartupWMClass=zarecomp
 X-AppImage-Version=$V
 EOF
 
