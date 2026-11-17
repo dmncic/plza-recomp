@@ -21,6 +21,15 @@ msg() {
 [ -f "$X/exefs/main" ] && [ -f "$X/romfs.bin" ] || { msg "Set the game up first (GAME FILES in the launcher), then press PLAY ONLINE."; exit 1; }
 mkdir -p "$R/extracted/aoc" "$R/lumiose" "$R/logs" || { msg "Can't write to $R."; exit 1; }
 
+# One at a time: the links below point into this AppImage's mount, which goes away when this start ends - a second
+# start re-pointing them under a first one still preparing the mod broke it ("cpu.h file not found"). The lock is
+# held (fd 9, inherited) until Lumiose Online and the game have exited.
+exec 9>"$R/.running.lock"
+if command -v flock >/dev/null 2>&1 && ! flock -n 9; then
+    msg "Lumiose Online is already running - or still preparing the online mod, which takes a few minutes the first time. Wait for its window."
+    exit 1
+fi
+
 # The first start builds the online game code and prepares the mod: about 8 GB while it compiles
 if [ ! -f "$R/extracted/lasgame.so" ]; then
     free=$(df -Pk "$R" 2>/dev/null | awk 'NR == 2 {print int($4 / 1048576)}')
