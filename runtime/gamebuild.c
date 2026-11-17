@@ -164,9 +164,19 @@ bool gamebuild_available(void) {
     return find_tools(&t);
 }
 
+// zig cc on Linux: an explicit target, so it uses its own glibc headers and stubs (the AppImage keeps them: tools/linux/
+// make_appimage.sh) - without one it looks for the system's, and SteamOS has none: "failed to find libc installation:
+// LibCStdLibHeaderNotFound", the game code never built on a Steam Deck. glibc 2.31: what the program itself is built for.
+#if defined(__linux__) && defined(__x86_64__)
+#define ZIG_TARGET "x86_64-linux-gnu.2.31"
+#else
+#define ZIG_TARGET ""
+#endif
+
 static void compiler(Args *a, const Tools *t) {
     add(a, t->cc);
     if (t->zig) add(a, "cc");
+    if (t->zig && ZIG_TARGET[0]) add(a, "-target"), add(a, ZIG_TARGET);
 }
 
 // ------------------------------------------------------------------ generator progress (its log)

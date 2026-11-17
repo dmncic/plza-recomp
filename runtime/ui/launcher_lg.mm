@@ -12,7 +12,8 @@
 // from that folder at once; LARECOMP_CHEATS_DOWNLOAD=1 downloads the cheat database; LARECOMP_SETUP_FILES=<base>|<update>|<dlc>|<keys> from those packages; LARECOMP_MOD_INSTALL=<file or folder> installs a translation at once;
 // LARECOMP_LAUNCHER_KEYS=1 opens the keyboard section, =<slot> also waits for a new key for that input
 // (runtime/input_bind.h BIND_*), and <slot>:<key name> presses that key for it; LARECOMP_LAUNCHER_PAGE=options|
-// controls|files|mods opens that launcher page; LARECOMP_LAUNCHER_SIZE=<w>x<h> makes the launcher's window that size.
+// controls|files|mods opens that launcher page; LARECOMP_LAUNCHER_SIZE=<w>x<h> makes the launcher's window that size;
+// LARECOMP_LAUNCHER_ONLINE=<frame>[:go] presses PLAY ONLINE at that frame (:go: and Start online in its notice).
 // Any window size: drawn for 1280x720 and scaled to the window (ui_scale_*: a window the desktop stretched, F11 /
 // Alt+Enter fullscreen, a TV). A controller drives all of it: A selects, B goes back, L / R change tabs (the game's
 // own A and B: bindings.c), and the Controller tab's button test is a mode of its own (pad_nav_update).
@@ -34,6 +35,7 @@
 
 extern "C" void vk_describe_gpu(char *name, size_t n, int *vram_gb, bool *integrated);  // nvn/vulkan/device.c
 extern "C" {
+#include "gameicon.h"
 #include "gamesetup.h"
 #include "nxpkg.h"
 #include "cheats.h"
@@ -487,6 +489,7 @@ static void game_files_pickers(SDL_Window *win, bool ready) {
     for (int i = 0; i < PICK_CHEATS; i++)
         if (take(g_pick_file[i], got, sizeof got)) snprintf(g_files[i], sizeof g_files[i], "%s", got), changed = true;
     if (changed) files_save();
+    if (changed && !setup_running()) gameicon_fetch_start(g_files[PICK_BASE], g_files[PICK_KEYS]);  // (no icon yet: the base game's)
     // prod.keys: the one picked, else where it would be found (beside the base game, ~/.switch, the emulators')
     static char auto_keys[1024];
     static char auto_for[1024] = "\x01";
@@ -998,7 +1001,25 @@ static void prism_tower(ImDrawList *d, float cx, float ground, float H, float t)
 }
 
 // The launcher's banner: a city at night around Prism Tower, its lights twinkling, and the title
+// The game's own icon in the banner, once the game files are set up (runtime/gameicon.c: taken from the player's own
+// packages); reloaded when it changes - with the window's icon
+extern "C" uint64_t vk_imgui_texture_rgba(const void *rgba, int w, int h);
+static uint64_t g_icon_tex;
+static unsigned g_icon_gen;
+static void icon_refresh(void) {
+    unsigned gen = gameicon_generation();
+    if (gen == g_icon_gen) return;
+    g_icon_gen = gen;
+    char p[1100];
+    if (!gameicon_path(p, sizeof p)) return;
+    SDL_Surface *s = SDL_LoadPNG(p), *r = s ? SDL_ConvertSurface(s, SDL_PIXELFORMAT_RGBA32) : NULL;
+    if (r && r->pitch == r->w * 4 && r->w <= 1024 && r->h <= 1024) g_icon_tex = vk_imgui_texture_rgba(r->pixels, r->w, r->h);
+    SDL_DestroySurface(r), SDL_DestroySurface(s);
+    rt_window_icon(ui_window());  // (the window opened with the icon there was then)
+}
+
 static void banner(ImDrawList *d, ImVec2 a, ImVec2 b, float t) {
+    icon_refresh();
     d->PushClipRect(a, b, true);
     banner_sky(d, a, b);
     float w = b.x - a.x, h = b.y - a.y, cx = a.x + w * 0.66f, base = b.y - h * 0.16f;
@@ -1027,12 +1048,84 @@ static void banner(ImDrawList *d, ImVec2 a, ImVec2 b, float t) {
     d->AddRectFilledMultiColor(ImVec2(a.x, base), b, IM_COL32(8, 9, 20, 0), IM_COL32(8, 9, 20, 0), IM_COL32(8, 9, 20, 255),
                                IM_COL32(8, 9, 20, 255));  // (the street fades into the status strip)
     ImFont *tf = g_title_font ? g_title_font : ImGui::GetFont(), *bf = g_button_font ? g_button_font : ImGui::GetFont();
-    d->AddText(tf, 120, ImVec2(a.x + 40, a.y + 28), IM_COL32(245, 248, 255, 255), "PL:Z-A");
+    float tx = a.x;
+    if (g_icon_tex) {  // (the game's icon left of the title, rounded like the Switch's HOME menu tiles; the line below
+                       // stays where it was, clear of the tower)
+        const float sz = 120, x0 = a.x + 44, y0 = a.y + 36;
+        d->AddRectFilled(ImVec2(x0 - 3, y0 - 3), ImVec2(x0 + sz + 3, y0 + sz + 3), IM_COL32(0, 0, 0, 110), 18);
+        d->AddImageRounded((ImTextureID)g_icon_tex, ImVec2(x0, y0), ImVec2(x0 + sz, y0 + sz), ImVec2(0, 0), ImVec2(1, 1),
+                           IM_COL32_WHITE, 16);
+        tx += sz + 22;
+    }
+    d->AddText(tf, 120, ImVec2(tx + 40, a.y + 28), IM_COL32(245, 248, 255, 255), "PL:Z-A");
     const char *sub = "R  E  C  O  M  P";
-    d->AddText(bf, 34, ImVec2(a.x + 46, a.y + 128), k_accent, sub);
+    d->AddText(bf, 34, ImVec2(tx + 46, a.y + 128), k_accent, sub);
     d->AddText(ImGui::GetFont(), ImGui::GetFontSize(), ImVec2(a.x + 46, a.y + 174), IM_COL32(170, 180, 205, 255),
                "Pokémon Legends: Z-A, recompiled for PC");
     d->PopClipRect();
+}
+
+// PLAY ONLINE: what Lumiose Online is, the first time (its marker: online/.notice-seen in the data folder), then the
+// launcher exits with 77 and tools/linux/AppRun starts Lumiose Online's own launcher (tools/linux/online/start.sh)
+static bool g_online_ask;
+static void online_go(void) {
+    char p[1200];
+    snprintf(p, sizeof p, "%s/online", rt_data_root());
+    mkdir(p, 0755);
+    snprintf(p, sizeof p, "%s/online/.notice-seen", rt_data_root());
+    if (FILE *f = fopen(p, "w")) fclose(f);
+    settings_save();
+    fprintf(stderr, "[launcher] PLAY ONLINE: Lumiose Online's launcher next\n");
+    plat_exit_status = 77;  // (the exit handler ends the process with it: runtime/platform)
+    exit(77);
+}
+static void online_notice_open(void) {
+    char p[1200];
+    struct stat st;
+    snprintf(p, sizeof p, "%s/online/.notice-seen", rt_data_root());
+    if (stat(p, &st) == 0) online_go();
+    g_online_ask = true;
+}
+static void online_notice(void) {
+    if (g_online_ask) ImGui::OpenPopup("Lumiose Online"), g_online_ask = false;
+    ImGuiViewport *vp = ImGui::GetMainViewport();
+    ImGui::SetNextWindowPos(vp->GetCenter(), ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
+    ImGui::SetNextWindowSize(ImVec2(760, 0));
+    if (!ImGui::BeginPopupModal("Lumiose Online", NULL, ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove)) return;
+    ImGui::PushTextWrapPos(0);
+    ImGui::TextUnformatted(T("Lumiose Online is a community multiplayer mod (TheMagnumChad/PokeZ-ARecomp-Online). It runs on "
+                             "its own build of the game, with its own launcher:",
+                             "O Lumiose Online é um mod multijogador da comunidade (TheMagnumChad/PokeZ-ARecomp-Online). Ele roda "
+                             "na sua própria versão do jogo, com o seu próprio launcher:"));
+    ImGui::Spacing();
+    ImGui::Bullet(); ImGui::TextUnformatted(T("It connects to the Lumiose Online server and downloads mod updates from it. "
+                                              "Those updates aren't signed and are compiled and run on this PC: start it only "
+                                              "if you trust that server.",
+                                              "Ele se conecta ao servidor do Lumiose Online e baixa atualizações do mod de lá. "
+                                              "Elas não são assinadas e são compiladas e executadas neste PC: só inicie se "
+                                              "confiar nesse servidor."));
+    ImGui::Bullet(); ImGui::TextUnformatted(T("It uses a save of its own (a new game): your save here isn't touched.",
+                                              "Ele usa um save próprio (um jogo novo): o seu save daqui não é alterado."));
+    ImGui::Bullet(); ImGui::TextUnformatted(T("The first start builds its own game code and prepares the mod: several minutes "
+                                              "and about 8 GB free. Your game files are shared, not copied.",
+                                              "O primeiro início compila o seu próprio código do jogo e prepara o mod: vários "
+                                              "minutos e cerca de 8 GB livres. Os arquivos do jogo são compartilhados, não copiados."));
+    ImGui::Bullet(); ImGui::TextUnformatted(T("Problems with online play: the LumioseOnline Discord, not this project.",
+                                              "Problemas no modo online: o Discord do LumioseOnline, não este projeto."));
+    ImGui::PopTextWrapPos();
+    ImGui::Spacing();
+    // (Start online only after a moment, and the focus on Cancel: a click or key meant for PLAY ONLINE doesn't agree)
+    static double opened;
+    if (ImGui::IsWindowAppearing()) opened = ImGui::GetTime();
+    const char *t = getenv("LARECOMP_LAUNCHER_ONLINE");  // (test: <frame>:go agrees too)
+    bool test_go = t && strstr(t, ":go") && ImGui::GetTime() - opened > 0.6;
+    ImGui::BeginDisabled(ImGui::GetTime() - opened < 0.5);
+    if (ImGui::Button(T("Start online", "Iniciar online"), ImVec2(240, 0)) || test_go) ImGui::CloseCurrentPopup(), online_go();
+    ImGui::EndDisabled();
+    ImGui::SameLine();
+    if (ImGui::IsWindowAppearing()) ImGui::SetKeyboardFocusHere();
+    if (ImGui::Button(T("Cancel", "Cancelar"), ImVec2(160, 0)) || ImGui::IsKeyPressed(ImGuiKey_Escape)) ImGui::CloseCurrentPopup();
+    ImGui::EndPopup();
 }
 
 // A launcher button: a wide flat bar with its label in Baloo 2; Play is the filled one
@@ -1267,6 +1360,9 @@ extern "C" void launcher_lg_run(const char *root) {
     }
     const char *keys_test = getenv("LARECOMP_LAUNCHER_KEYS");
     if (keys_test && atoi(keys_test) > 0) bind_capture_begin(BIND_DEV_KEY, atoi(keys_test));
+    if (!g_files_loaded) files_load();
+    // (a game set up before the icon was taken: the base game picked then - when it is still there - gives it now)
+    if (!getenv("LARECOMP_SETUP_DIR") && !getenv("LARECOMP_SETUP_FILES")) gameicon_fetch_start(g_files[PICK_BASE], g_files[PICK_KEYS]);
     if (getenv("LARECOMP_SETUP_DIR")) setup_start(getenv("LARECOMP_SETUP_DIR"));
     else if (setup_code_stale()) {  // (an updated app: the game code built again from the files set up already)
         fprintf(stderr, "[launcher] the game code is another version's: building it again\n");
@@ -1658,10 +1754,24 @@ extern "C" void launcher_lg_run(const char *root) {
             float bx = split + 34, bw = W - split - 68, y = 52;
             ImGui::SetCursorScreenPos(ImVec2(bx, y));
             if (frame == 0) ImGui::SetKeyboardFocusHere();
-            if (ready) { if (big_button(T("PLAY", "JOGAR"), bw, 88, true, inst != MOD_INSTALL_RUNNING)) play = true; }
+            // PLAY ONLINE: Lumiose Online (tools/linux/build_online.sh), in the AppImage only; PLAY gets a bit lower
+            static int online = -1;
+            if (online < 0) { char op[1100]; online = rt_resource("online/start.sh", NULL, op, sizeof op); }
+            float ph = ready && online ? 72 : 88;
+            if (ready) { if (big_button(T("PLAY", "JOGAR"), bw, ph, true, inst != MOD_INSTALL_RUNNING)) play = true; }
             else if (big_button(running ? T("SETTING UP...", "PREPARANDO...") : T("SET UP GAME", "PREPARAR O JOGO"), bw, 88, true, !running))
                 page = PAGE_FILES;
-            y += 88 + 28;
+            if (ready && online) {
+                y += ph + 10;
+                ImGui::SetCursorScreenPos(ImVec2(bx, y));
+                static const long online_test = getenv("LARECOMP_LAUNCHER_ONLINE") ? atol(getenv("LARECOMP_LAUNCHER_ONLINE")) : 0;
+                if (big_button(T("PLAY ONLINE", "JOGAR ONLINE"), bw, 58, false, inst != MOD_INSTALL_RUNNING) ||
+                    (online_test && frame == online_test))  // (test: pressed at that frame)
+                    online_notice_open();
+                y += 58 + 18;
+            } else
+                y += 88 + 28;
+            online_notice();
             const struct { const char *en, *pt; int to; } rows[] = {
                 {"OPTIONS", "OPÇÕES", PAGE_OPTIONS}, {"CONTROLS", "CONTROLES", PAGE_CONTROLS},
                 {"GAME FILES", "ARQUIVOS DO JOGO", PAGE_FILES}, {"MODS", "MODS", PAGE_MODS}, {"CHEATS", "CHEATS", PAGE_CHEATS},

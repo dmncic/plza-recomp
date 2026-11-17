@@ -1504,6 +1504,9 @@ void ui_window_init(void) {
     if (window) return;
     atexit(quick_exit_handler);
     SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "1");
+    // (the window's class / Wayland app id: the desktop matches it to zarecomp.desktop - the menu entry's icon in the
+    // task bar, the title bar where the window icon itself isn't used)
+    SDL_SetHint(SDL_HINT_APP_ID, "zarecomp");
     settings_load();
     if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMEPAD)) FATAL("SDL_Init: %s\n", SDL_GetError());
     input_load_user_mappings();
