@@ -168,8 +168,10 @@ AppImage carries that one too and starts it with its own launcher: once your gam
   bundles mod 1.5.8; whatever the server sends replaces it.
 - Everything of it lives in `online/` in the data folder (delete that folder to remove it).
 - **AMD Radeon on Linux:** text missing in online menus and dialogs was an upstream ZA Recomp bug on discrete AMD GPUs
-  (RADV) that the Lumiose fork predates; rc5's online build carries upstream's fix (PR #195). On rc4, start the AppImage
-  with `LARECOMP_VK_HEAP_DMABUF=0` in front to avoid it.
+  (RADV) that the Lumiose fork predates; the online build carries upstream's fix (PR #195). rc5 also took that PR's
+  256 MB memory window, which left buildings, ground and limbs out of the online world on AMD - gone in rc6 (on rc5:
+  start the AppImage with `LARECOMP_VK_GMEM_WINDOW=0` in front).
+- **Opening the menu with the mouse** crashed Lumiose Online (rc5 and earlier): fixed in rc6.
 - Problems with online play go to the **LumioseOnline Discord**, not this project.
 
 ## Cheat codes
