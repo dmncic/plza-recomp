@@ -1,0 +1,175 @@
+TheMagnumChad/PokeZ-ARecomp-Online PR #4 by JeffeSouza (de23675, open): a "Hold to focus" mouse action (Settings > Controls > Mouse), driving the same focus latch as Tab while held. Merged over PR #5: on the Change Moves page a Hold to focus button doesn't latch ZL either.
+
+diff --git a/docs/PC-CONTROLS.md b/docs/PC-CONTROLS.md
+index 76f692e..dd1f404 100644
+--- a/docs/PC-CONTROLS.md
++++ b/docs/PC-CONTROLS.md
+@@ -14,6 +14,7 @@ Hover over main-menu options, party members, Satchel entries, Pokédex grid entr
+ | Dodge roll | Space |
+ | Crouch / stand | Left Ctrl |
+ | Focus / lock on | Press Tab to toggle; requires a closed focus indicator and releases when the target is lost |
++| Focus while held (optional) | Assign **Hold to focus** to a mouse button in Settings > Controls > Mouse; releasing it ends focus |
+ | Aim Poké Ball | Hold right mouse button |
+ | Throw Poké Ball | Left mouse button (while aiming or on its own) |
+ | Cycle Poké Ball types | Scroll wheel while aiming |
+diff --git a/runtime/hle/bindings.c b/runtime/hle/bindings.c
+index 5121f8e..9db1f3a 100644
+--- a/runtime/hle/bindings.c
++++ b/runtime/hle/bindings.c
+@@ -258,7 +258,7 @@ bool bind_settings_load(const char *key, const char *val) {
+     }
+     if (!strncmp(key, "bind_mouse_", 11)) {  // bind_mouse_left = zr / none
+         for (int m = 0; m < MOUSEB_COUNT; m++)
+-            if (!strcmp(key + 11, k_mouse_ini[m])) g_bind_mouse[m] = (int16_t)(!strcmp(val, "aim") ? BIND_MOUSE_AIM : !strcmp(val, "party_toggle") ? BIND_MOUSE_PARTY_TOGGLE : strcmp(val, "none") ? bind_slot_from_name(val) : -1);
++            if (!strcmp(key + 11, k_mouse_ini[m])) g_bind_mouse[m] = (int16_t)(!strcmp(val, "aim") ? BIND_MOUSE_AIM : !strcmp(val, "party_toggle") ? BIND_MOUSE_PARTY_TOGGLE : !strcmp(val, "focus") ? BIND_MOUSE_FOCUS : strcmp(val, "none") ? bind_slot_from_name(val) : -1);
+         for (int m = 0; m < MOUSEB_COUNT; m++)
+             if (g_bind_mouse[m] >= BIND_PAD_COUNT) g_bind_mouse[m] = -1;  // (buttons only: not a stick direction)
+         return true;
+@@ -295,7 +295,7 @@ void bind_settings_save(FILE *f) {
+         }
+     for (int m = 0; m < MOUSEB_COUNT; m++)
+         if (g_bind_mouse[m] != k_def_mouse[m])
+-            fprintf(f, "bind_mouse_%s = %s\n", k_mouse_ini[m], g_bind_mouse[m] == BIND_MOUSE_AIM ? "aim" : g_bind_mouse[m] == BIND_MOUSE_PARTY_TOGGLE ? "party_toggle" : g_bind_mouse[m] >= 0 ? k_ini[g_bind_mouse[m]] : "none");
++            fprintf(f, "bind_mouse_%s = %s\n", k_mouse_ini[m], g_bind_mouse[m] == BIND_MOUSE_AIM ? "aim" : g_bind_mouse[m] == BIND_MOUSE_PARTY_TOGGLE ? "party_toggle" : g_bind_mouse[m] == BIND_MOUSE_FOCUS ? "focus" : g_bind_mouse[m] >= 0 ? k_ini[g_bind_mouse[m]] : "none");
+ }
+ 
+ // A token chooses one of the complete, already loaded key glyphs. Bindings
+diff --git a/runtime/hle/input.c b/runtime/hle/input.c
+index 86e1536..f312fe5 100644
+--- a/runtime/hle/input.c
++++ b/runtime/hle/input.c
+@@ -187,6 +187,11 @@ static _Atomic uint64_t key_normal_actions, key_normal_unseen, key_normal_taps;
+ static _Atomic uint64_t cancel_edge_start; // frame + 1; ensures a new cancel edge if sprint is held
+ extern uint64_t renderer_present_count(void);
+ static bool key_focus_toggled, key_focus_was_down;
++// A mouse button bound to "Hold to focus" (BIND_MOUSE_FOCUS) drives the same latch as Tab, but held: its press turns
++// focus on, its release turns it off (recompute_mouse_locked sets mouse_focus_down from mouse_down). The target-lost
++// release in input_frame still applies, and a press that finds no target drops it again after a few frames.
++static _Atomic bool mouse_focus_down;
++static bool mouse_focus_was_down;
+ static bool key_focus_acquired;
+ static uint64_t key_focus_started;
+ static uint64_t key_focus_started_frame;
+@@ -224,6 +229,17 @@ static void recompute_keyboard(void) {
+         key_focus_started_frame=key_focus_toggled?renderer_present_count():0;
+     }
+     key_focus_was_down = focus_down;
++    bool mouse_focus = atomic_load(&mouse_focus_down);
++    // (Change Moves: ZL is a plain key there - PR #5 - so a Hold to focus button doesn't latch it either)
++    if (scene!=ZA_BIGMAP_STATE && !moves_page && mouse_focus != mouse_focus_was_down) {
++        if (mouse_focus && !key_focus_toggled) {
++            key_focus_toggled = true;key_focus_acquired=false;
++            key_focus_started=SDL_GetTicksNS();key_focus_started_frame=renderer_present_count();
++        } else if (!mouse_focus && key_focus_toggled) {
++            key_focus_toggled = false;key_focus_started=0;key_focus_started_frame=0;
++        }
++    }
++    mouse_focus_was_down = mouse_focus;
+     if (moves_page) { if (focus_down) b |= 1ull << BTN_ZL; else b &= ~(1ull << BTN_ZL); }
+     else if (key_focus_toggled) b |= 1ull << BTN_ZL;
+     else b &= ~(1ull << BTN_ZL);
+@@ -1789,7 +1805,7 @@ static void note_press(uint64_t down, uint64_t up) {
+ // so a movement key cannot remain stuck after the player finishes typing.
+ void input_release_keyboard_for_chat(void) {
+     memset(keys_down, 0, sizeof keys_down);
+-    key_focus_toggled = key_focus_was_down = false;
++    key_focus_toggled = key_focus_was_down = mouse_focus_was_down = false;
+     recompute_keyboard();
+     atomic_store(&key_normal_unseen, 0); atomic_store(&key_normal_taps, 0);
+ }
+@@ -1820,7 +1836,7 @@ void input_reset(void) {
+     pthread_mutex_unlock(&legacy_chat_lock);
+     rumble_clear();
+     memset(keys_down, 0, sizeof keys_down);
+-    key_focus_toggled = key_focus_was_down = false;
++    key_focus_toggled = key_focus_was_down = mouse_focus_was_down = false;
+     recompute_keyboard();
+     atomic_store(&key_normal_unseen, 0); atomic_store(&key_normal_taps, 0);
+ }
+@@ -2315,9 +2331,12 @@ static uint64_t aim_since, aim_wheel_frame = UINT64_MAX, aim_wheel_pulse;
+ static void recompute_mouse_locked(void) {
+     extern uint64_t renderer_present_count(void);
+     uint64_t frame = renderer_present_count();
+-    bool aim = false;
+-    for (int m = 0; m < MOUSEB_COUNT; m++)
++    bool aim = false, focus = false;
++    for (int m = 0; m < MOUSEB_COUNT; m++) {
+         if (g_bind_mouse[m] == BIND_MOUSE_AIM && mouse_down[m]) aim = true;
++        if (g_bind_mouse[m] == BIND_MOUSE_FOCUS && mouse_down[m]) focus = true;
++    }
++    atomic_store(&mouse_focus_down, focus);  // (read by recompute_keyboard: no game button of its own)
+     if (!aim) aim_blocked_until_release = false;
+     if (aim_blocked_until_release) aim = false;
+     bool left_throw = mouse_down[MOUSEB_LEFT] && g_bind_mouse[MOUSEB_LEFT] == BIND_ZR;
+@@ -2856,6 +2875,8 @@ void input_handle_event(const SDL_Event *e) {
+         uint64_t after = mouse_buttons;
+         pthread_mutex_unlock(&mouse_buttons_lock);
+         note_press(after & ~before, before & ~after);
++        // Hold to focus goes through the keyboard's focus latch (outside the mouse lock, as key events do).
++        if (g_bind_mouse[m] == BIND_MOUSE_FOCUS) recompute_keyboard();
+         break;
+     }
+     case SDL_EVENT_MOUSE_WHEEL: {
+@@ -3287,7 +3308,7 @@ RT_ON_RESET(input_reboot_reset) {
+     mouse_menu_down = -1; mouse_tab_down = -1; mouse_tab_down_scene = 0; mouse_menu_down_scene = 0; mouse_menu_drag_started = false;
+     mouse_hover_last = -1; mouse_hover_scene = 0;
+     g_pad_obj = 0; g_inject_plus = 0;
+-    key_focus_toggled = key_focus_was_down = false;
++    key_focus_toggled = key_focus_was_down = mouse_focus_was_down = false;
+     atomic_store(&title_confirm_until,0);
+     key_focus_acquired=false;key_focus_started=0;key_focus_started_frame=0;atomic_store(&key_focus_feedback_seen,0);atomic_store(&key_focus_feedback_active,0);atomic_store(&key_focus_object_seen,0);atomic_store(&key_focus_object_active,0);
+     atomic_store(&mouse_dex_grid_observation,0);atomic_store(&mouse_dex_splash_observation,0);mouse_dex_open_down=false;
+@@ -3307,6 +3328,8 @@ RT_ON_RESET(input_reboot_reset) {
+ }  // (reboot: the controller object was guest memory)
+ void input_frame(uint64_t frame) {
+     recompute_mouse(); // advance aim/cancel transitions even without more mouse events
++    // (a Hold to focus button let go by a mouse-capture change, not by its own event: end the focus here)
++    if (atomic_load(&mouse_focus_down) != mouse_focus_was_down) recompute_keyboard();
+     uint64_t scene = za_menu_state();
+     if(scene!=ZA_OUTFITS_STATE||menu_input_captured()||lumiose_scroll_menu_open()){
+         mouse_outfits_action_down=false;atomic_store(&mouse_outfits_action_until,0);
+diff --git a/runtime/input_bind.h b/runtime/input_bind.h
+index 93b0ca2..71898cb 100644
+--- a/runtime/input_bind.h
++++ b/runtime/input_bind.h
+@@ -33,7 +33,10 @@ extern int16_t g_bind_pad[BIND_PAD_COUNT];  // PADB value per Switch button
+ extern int16_t g_bind_key[BIND_KEY_COUNT];  // SDL_Scancode per input (0 = none)
+ // Mouse buttons -> Switch button (BIND_A..BIND_DOWN, -1 none): the other way round from the tables above, so a mouse
+ // button adds to the keyboard's key instead of taking its place. Only while the mouse camera holds the cursor.
+-enum { BIND_MOUSE_AIM = -2, BIND_MOUSE_PARTY_TOGGLE = -3 }; // hold to aim; release cancels, left click throws
++// BIND_MOUSE_FOCUS: hold to focus (lock on), as ZL is held on a controller. It sets the keyboard's focus latch (the
++// one Tab toggles), so the focused move keys (1/2/3/4) work; a mouse button bound to plain ZL presses the game's ZL
++// without that latch, and the move keys stay off.
++enum { BIND_MOUSE_AIM = -2, BIND_MOUSE_PARTY_TOGGLE = -3, BIND_MOUSE_FOCUS = -4 }; // hold to aim; release cancels, left click throws
+ enum { MOUSEB_LEFT, MOUSEB_RIGHT, MOUSEB_MIDDLE, MOUSEB_X1, MOUSEB_X2, MOUSEB_COUNT };
+ extern int16_t g_bind_mouse[MOUSEB_COUNT];
+ const char *bind_mouse_name(int mb);           // "Left button"
+diff --git a/runtime/ui/controls_ui.mm b/runtime/ui/controls_ui.mm
+index 318f56d..87fc241 100644
+--- a/runtime/ui/controls_ui.mm
++++ b/runtime/ui/controls_ui.mm
+@@ -131,11 +131,11 @@ static void stick_mouse_rows() {
+                               TR("Keep the mouse view steady while aiming a Poké Ball in Z-A 2.0.2. Battle focus retains its normal camera when not aiming a ball.",
+                                  "Mantém a câmera do mouse estável ao mirar uma Poké Bola no Z-A 2.0.2. O foco em batalha mantém a câmera normal quando não mira uma bola."));
+         // the Switch buttons a mouse button can press (as in Configure inputs)
+-        static const int opts[] = {-1, BIND_MOUSE_AIM, BIND_MOUSE_PARTY_TOGGLE, BIND_A, BIND_B, BIND_X, BIND_Y, BIND_L, BIND_R, BIND_ZL, BIND_ZR, BIND_PLUS, BIND_MINUS,
++        static const int opts[] = {-1, BIND_MOUSE_AIM, BIND_MOUSE_PARTY_TOGGLE, BIND_MOUSE_FOCUS, BIND_A, BIND_B, BIND_X, BIND_Y, BIND_L, BIND_R, BIND_ZL, BIND_ZR, BIND_PLUS, BIND_MINUS,
+                                    BIND_UP, BIND_DOWN, BIND_LEFT, BIND_RIGHT, BIND_LSTICK, BIND_RSTICK};
+         enum { NOPT = sizeof opts / sizeof opts[0] };
+         const char *names[NOPT];
+-        for (int i = 0; i < NOPT; i++) names[i] = opts[i] >= 0 ? bind_input_name(opts[i]) : opts[i] == BIND_MOUSE_AIM ? TR("Hold to aim", "Segurar para mirar") : opts[i] == BIND_MOUSE_PARTY_TOGGLE ? TR("Send Pokémon (Up)", "Enviar Pokémon (cima)") : TR("(none)", "(nenhum)");
++        for (int i = 0; i < NOPT; i++) names[i] = opts[i] >= 0 ? bind_input_name(opts[i]) : opts[i] == BIND_MOUSE_AIM ? TR("Hold to aim", "Segurar para mirar") : opts[i] == BIND_MOUSE_PARTY_TOGGLE ? TR("Send Pokémon (Up)", "Enviar Pokémon (cima)") : opts[i] == BIND_MOUSE_FOCUS ? TR("Hold to focus", "Segurar para focar") : TR("(none)", "(nenhum)");
+         for (int m = 0; m < MOUSEB_COUNT; m++) {
+             int cur = 0, def = 0;
+             for (int i = 0; i < NOPT; i++) {
+@@ -145,8 +145,8 @@ static void stick_mouse_rows() {
+             static const char *const mnames[MOUSEB_COUNT][2] = {{"Left button", "Botão esquerdo"}, {"Right button", "Botão direito"},
+                 {"Middle button", "Botão do meio"}, {"Back button", "Botão voltar"}, {"Forward button", "Botão avançar"}};
+             if (opt_choice(TR(mnames[m][0], mnames[m][1]), &cur, names, NOPT, def,
+-                           TR("Choose a game button or a mouse action (Camera: Always). Send Pokémon uses the Up command.",
+-                              "Escolha um botão do jogo ou uma ação do mouse (Câmera: Sempre). Enviar Pokémon usa o comando para cima."))) {
++                           TR("Choose a game button or a mouse action (Camera: Always). Send Pokémon uses the Up command. Hold to focus locks on while held, with the focused move keys (1/2/3/4).",
++                              "Escolha um botão do jogo ou uma ação do mouse (Câmera: Sempre). Enviar Pokémon usa o comando para cima. Segurar para focar trava no alvo enquanto segura, com as teclas de golpe (1/2/3/4)."))) {
+                 g_bind_mouse[m] = (int16_t)opts[cur];
+                 changed = true;
+                 settings_save();

@@ -172,6 +172,9 @@ AppImage carries that one too and starts it with its own launcher: once your gam
   256 MB memory window, which left buildings, ground and limbs out of the online world on AMD - gone in rc6 (on rc5:
   start the AppImage with `LARECOMP_VK_GMEM_WINDOW=0` in front).
 - **Opening the menu with the mouse** crashed Lumiose Online (rc5 and earlier): fixed in rc6.
+- **Keyboard and mouse online** (rc7, from the fork's open pull requests #5, #4 and #3 by JeffeSouza): Change Moves'
+  ZL / ZR tabs switch from the keyboard; a mouse button can be set to **Hold to focus** (Settings > Controls > Mouse)
+  for the 1-4 move keys; the mouse stays held in trainer and story battles.
 - Problems with online play go to the **LumioseOnline Discord**, not this project.
 
 ## Cheat codes
