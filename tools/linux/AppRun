@@ -47,7 +47,10 @@ case "${1:-}" in
     dest="$HOME/Applications/ZARecomp-x86_64.AppImage"
     [ "$(readlink -f "$APPIMAGE")" = "$(readlink -f "$dest" 2>/dev/null)" ] || cp -f "$APPIMAGE" "$dest"
     chmod +x "$dest"
-    cp -f "$HERE/zarecomp.png" "$HOME/.local/share/icons/hicolor/256x256/apps/zarecomp.png"
+    # (the game's own icon once the game is set up - taken from the player's files, runtime/gameicon.c - else the app's)
+    icon="$HERE/zarecomp.png"; [ -s "$DATA/icon.png" ] && icon="$DATA/icon.png"
+    cp -f "$icon" "$HOME/.local/share/icons/hicolor/256x256/apps/zarecomp.png"
+    touch "$HOME/.local/share/icons/hicolor" 2>/dev/null || true
     # (the menu entry keeps this data folder: the copy in ~/Applications would otherwise make a new one beside itself)
     esc="$(printf '%s' "$DATA" | sed 's/[\\|&]/\\&/g')"  # (for the sed below)
     sed -e "s|^Exec=.*|Exec=env \"LARECOMP_DATA_ROOT=$esc\" \"$dest\" %U|" -e "s|^TryExec=.*||" "$HERE/zarecomp.desktop" > "$HOME/.local/share/applications/zarecomp.desktop"
@@ -97,4 +100,9 @@ fi
 [ -n "${SteamGameId:-}" ] && [ -z "${SDL_VIDEO_DRIVER:-}" ] && export SDL_VIDEO_DRIVER=x11
 # Keep the AppImage's own environment out of the system tools the game may start (file dialogs, the browser)
 unset PYTHONHOME PYTHONPATH
-exec "$APP/lasrecomp" "$@"
+"$APP/lasrecomp" "$@"
+rc=$?
+# PLAY ONLINE: the launcher exits with 77, and Lumiose Online's launcher starts (runtime/ui/launcher_lg.mm) - from here,
+# so the AppImage stays mounted while it runs
+if [ $rc = 77 ] && [ -x "$APP/online/start.sh" ]; then exec "$APP/online/start.sh"; fi
+exit $rc

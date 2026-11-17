@@ -1,0 +1,26 @@
+Upstream ZA Recomp PR #195 (azlekayn, merged by Hexveil404 in 5527842, 2026-11-07), on top of the Lumiose Online fork
+(forked before it): on a discrete AMD GPU with RADV, Pokemon Z-A's guest memory was replaced with an empty mapping, so
+shaders read nothing - every text label and dialog drawn blank (the world too on some cards). MIT, as the fork.
+
+Only its guest_heap_dmabuf part: the PR's other half (a 256 MB guest-memory window on every AMD GPU under Linux, for
+speed) relies on later upstream changes the fork doesn't have - with it the world came out with missing buildings,
+ground and limbs (RX 9070 XT), and LARECOMP_VK_GMEM_WINDOW=0 (the whole memory imported) brought them back.
+
+diff --git a/runtime/nvn/vulkan/exec.c b/runtime/nvn/vulkan/exec.c
+index 4482dac..ff84ba0 100644
+--- a/runtime/nvn/vulkan/exec.c
++++ b/runtime/nvn/vulkan/exec.c
+@@ -5069,6 +5075,13 @@ static bool guest_heap_dmabuf(void) {
+     if (gmem_buf || !g_vk.dev || !(g_vk.dmabuf || g_vk.map_placed) || getenv("LARECOMP_VK_NO_GMEM")) return false;
+     const char *e = getenv("LARECOMP_VK_HEAP_DMABUF");
+     if (e ? !atoi(e) : !strstr(g_vk.props.deviceName, "RADV")) return false;
++    // Pokémon Z-A has no heap: its memory is the window (gwin: physical memory, 7676b00000 on 2.0.2), past the end of this
++    // mapping. gmem_buf set here kept gmem_info from importing that window, so shaders read this empty buffer: the world
++    // and all text black, the HUD art and 60 fps intact, no error (RX 7800 XT, RADV; an APU's system heap is too small to
++    // get here, which is why the Steam Deck never showed it). Asked of the files as gmem_chunk_shift does: this runs
++    // before the boot sets g_game_is_la. LARECOMP_VK_HEAP_DMABUF=1 still forces it.
++    extern bool game_files_are_la(const char *game_dir);
++    if (!e && (!g_game_is_la || !game_files_are_la("extracted"))) return false;
+     const uint64_t size = HEAP_MAX;
+     VkPhysicalDeviceMemoryProperties mp;
+     vkGetPhysicalDeviceMemoryProperties(g_vk.phys, &mp);

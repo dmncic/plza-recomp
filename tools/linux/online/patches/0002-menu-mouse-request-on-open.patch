@@ -1,0 +1,40 @@
+Lumiose Online fork, native PC controls (rt_za_grid_tick, runtime/hle/input.c): a mouse request on a menu list queued
+before the menu screen opened - the click that opened it - or in its first frames was applied to the menu while the
+game was still building it; the game's selection notification (0x7000fad610) then read an empty object: signal 11
+accessing 0xa8 right at FieldMain -> Menu. Such requests are now dropped (later hovers and clicks work as before).
+
+diff --git a/runtime/hle/input.c b/runtime/hle/input.c
+index 5f23605..de064a4 100644
+--- a/runtime/hle/input.c
++++ b/runtime/hle/input.c
+@@ -1045,7 +1045,7 @@ void input_native_layout_tick(uint64_t layout) {
+     za_ball_ui_tick(layout,mouse_ball_ui_closing());
+ }
+ void input_native_layout_destroy(uint64_t layout){za_ball_ui_forget(layout);za_battle_hud_forget(layout);}
+-typedef struct { uint64_t scene, epoch, frame, candidate, ready, last; bool ambiguous; } ZaGridMouse;
++typedef struct { uint64_t scene, epoch, frame, candidate, ready, last, since; bool ambiguous; } ZaGridMouse;
+ static ZaGridMouse za_grid_mouse;
+ static pthread_mutex_t za_grid_lock = PTHREAD_MUTEX_INITIALIZER;
+ static _Thread_local bool za_grid_busy;
+@@ -1135,7 +1135,7 @@ void rt_za_grid_tick(Cpu *c) {
+     za_grid_busy = true;
+     uint64_t frame = renderer_present_count(), epoch = atomic_load(&mouse_list_scene_epoch);
+     ZaGridMouse *g = &za_grid_mouse;
+-    if (g->scene != scene || g->epoch != epoch) { memset(g, 0, sizeof *g); g->scene = scene; g->epoch = epoch; }
++    if (g->scene != scene || g->epoch != epoch) { memset(g, 0, sizeof *g); g->scene = scene; g->epoch = epoch; g->since = frame; }
+     if (g->frame != frame) { g->ready = g->ambiguous ? 0 : g->candidate; g->candidate = 0; g->ambiguous = false; g->frame = frame; }
+     if (g->candidate && g->candidate != o) g->ambiguous = true; else g->candidate = o;
+     if (g->ready == o && g->last != frame && !menu_input_captured() && !lumiose_scroll_menu_open() &&
+@@ -1144,6 +1144,12 @@ void rt_za_grid_tick(Cpu *c) {
+         g->last = frame;
+         uint64_t queued = atomic_load(&direct_list_queued);
+         int request = frame >= queued && frame - queued <= 15 ? atomic_exchange(&direct_list_request, 0) : 0;
++        // (a click queued before this screen opened - the one that opened it - or in its first frames: dropped. Applied
++        // to a menu still being built, the game's selection notification read an empty object: a crash on opening it)
++        if (request && (queued < g->since || frame - g->since < 20)) {
++            if (request & 64) atomic_store(&direct_list_click_pending, false);
++            request = 0;
++        }
+         if (request) {
+             int slot = (request & 63) - 1;
+             bool party = scene == ZA_BAG_STATE || (scene == ZA_MENU_STATE ? slot >= 36 : slot >= 30);
