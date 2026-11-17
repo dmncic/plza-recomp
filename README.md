@@ -167,6 +167,9 @@ AppImage carries that one too and starts it with its own launcher: once your gam
   they are compiled and run on your PC and **are not signed** - start it only if you trust that server. The AppImage
   bundles mod 1.5.8; whatever the server sends replaces it.
 - Everything of it lives in `online/` in the data folder (delete that folder to remove it).
+- **AMD Radeon on Linux:** text missing in online menus and dialogs was an upstream ZA Recomp bug on discrete AMD GPUs
+  (RADV) that the Lumiose fork predates; rc5's online build carries upstream's fix (PR #195). On rc4, start the AppImage
+  with `LARECOMP_VK_HEAP_DMABUF=0` in front to avoid it.
 - Problems with online play go to the **LumioseOnline Discord**, not this project.
 
 ## Cheat codes

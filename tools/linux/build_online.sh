@@ -20,6 +20,11 @@ if [ ! -d "$S/.git" ]; then rm -rf "$S"; git clone -q --filter=blob:none "$REPO"
 if [ "$(git -C "$S" rev-parse HEAD)" != "$REV" ]; then
     git -C "$S" fetch -q origin "$REV" && git -C "$S" checkout -q --detach "$REV"
 fi
+# fixes from upstream ZA Recomp the fork doesn't have yet (tools/linux/online/patches: each says what it fixes)
+git -C "$S" checkout -q -- . && git -C "$S" checkout -q --detach "$REV"
+for p in "$R"/tools/linux/online/patches/*.patch; do
+    [ -f "$p" ] && { git -C "$S" apply "$p" || { echo "build_online: $(basename "$p") doesn't apply"; exit 1; }; }
+done
 
 # the runtime: zig's compiler runtime has no __cpu_model (clang's __builtin_cpu_supports): cpu_builtins.h answers it;
 # VMA 3.3.0's header is this repository's (the fork expects it in its deps prefix)
