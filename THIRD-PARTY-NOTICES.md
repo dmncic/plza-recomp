@@ -12,6 +12,7 @@ in the Windows release, in the `licenses/` folder next to the program.
 | [Vulkan Memory Allocator](https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator) | 3.3.0 | MIT | Advanced Micro Devices, Inc. |
 | [miniz](https://github.com/richgel999/miniz) (texture packs' PNG reading) | 11.0.2 | MIT | Rich Geldreich, RAD Game Tools, Valve Software |
 | [stb_image](https://github.com/nothings/stb) (the game's icon, read from the player's own files) | 2.32 (`9600522`) | MIT or public domain | Sean Barrett |
+| [ZA Recomp - Lumiose Online](https://github.com/TheMagnumChad/PokeZ-ARecomp-Online) (PLAY ONLINE: its runtime, scripts and the Lumiose Online mod module; built by `tools/linux/build_online.sh`, its components' licenses in `online/licenses/`) | `f6b5d53` | MIT (the mod module: its authors') | Peiikai, Hexveil404, TheMagnumChad and the Lumiose Online team |
 | [SMAA](https://github.com/iryoku/smaa) | - | MIT | Jorge Jimenez, Jose I. Echevarria, Belen Masia, Fernando Navarro, Diego Gutierrez |
 | [Baloo 2](https://github.com/EkType/Baloo2) font | - | SIL Open Font License 1.1 | The Baloo 2 Project Authors |
 | [Lua](https://www.lua.org) (in the Lua scripting plugin, `contrib/legendslua`) | 5.3.6 | MIT | Lua.org, PUC-Rio |

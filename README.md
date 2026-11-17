@@ -30,12 +30,13 @@ affiliated with or endorsed by them.
 2. [Download and install](#download-and-install)
 3. [Your game files: base game (XCI / NSP), update, DLC, keys](#your-game-files)
 4. [Mega Dimension DLC](#mega-dimension-dlc)
-5. [Cheat codes](#cheat-codes)
-6. [Options worth knowing](#options-worth-knowing)
-7. [Where your data is](#where-your-data-is)
-8. [Troubleshooting](#troubleshooting)
-9. [Building the AppImage yourself](#building-the-appimage-yourself)
-10. [Credits and license](#credits-and-license)
+5. [Lumiose Online (multiplayer)](#lumiose-online-multiplayer)
+6. [Cheat codes](#cheat-codes)
+7. [Options worth knowing](#options-worth-knowing)
+8. [Where your data is](#where-your-data-is)
+9. [Troubleshooting](#troubleshooting)
+10. [Building the AppImage yourself](#building-the-appimage-yourself)
+11. [Credits and license](#credits-and-license)
 
 ---
 
@@ -151,6 +152,21 @@ The DLC is optional; without it the game runs as on a Switch that doesn't own it
   game - the title screen shows "Downloadable content ready".
 - **Replacing it**: pick another file and click *Replace with the DLC picked above*.
 
+## Lumiose Online (multiplayer)
+
+[Lumiose Online](https://github.com/TheMagnumChad/PokeZ-ARecomp-Online) is a community multiplayer mod: Lumiose City
+with other players, chat, trades and battles. It is made for another recompilation of the game (ZA Recomp), so the
+AppImage carries that one too and starts it with its own launcher: once your game is set up, press **PLAY ONLINE**.
+
+- **The first start** builds the online game code and prepares the mod: several minutes and about **8 GB** free. If
+  its launcher shows *Compile now*, click it. Your game files are shared, not copied.
+- **Its own save**: online play starts a new game (the mod needs one). Your save from PLAY is never touched.
+- **Updates come from its server.** The mod connects to the Lumiose Online server, which also sends new mod builds;
+  they are compiled and run on your PC and **are not signed** - start it only if you trust that server. The AppImage
+  bundles mod 1.5.8; whatever the server sends replaces it.
+- Everything of it lives in `online/` in the data folder (delete that folder to remove it).
+- Problems with online play go to the **LumioseOnline Discord**, not this project.
+
 ## Cheat codes
 
 The **CHEATS** page of the launcher, and the **Cheats panel in game** (**F2** on the keyboard, **Minus + R** on a
@@ -243,6 +259,7 @@ the game's icon once the game is set up.
 | `cheats/` | `B1F12FD919EAE86A.txt`, `notes.txt`, `enabled.txt` |
 | `larecomp.ini` | settings |
 | `icon.png` | the game's icon, taken from your base game package |
+| `online/` | Lumiose Online: its game code, mod builds, save and settings |
 | `lasrecomp.log` / `lasrecomp-prev.log` | the log of this / the previous run |
 | `mods/`, `plugins/`, `lua/` | mods, plugins, Lua scripts |
 
@@ -250,6 +267,9 @@ To start over, delete `extracted/` (your saves stay).
 
 ## Troubleshooting
 
+- **"The game code didn't build"** right after 15-24 % (Steam Deck / SteamOS, rc1 and rc2) - those versions' compiler
+  looked for the system's C headers, which SteamOS doesn't have. Fixed in rc3: replace the AppImage and
+  click *Recompile the game* again.
 - **"This needs a CPU with AVX2"** - the game code is built for x86-64-v3; older CPUs can't run it.
 - **"No Vulkan loader"** / a black window - install your distribution's Vulkan package and a current GPU driver.
   `vulkaninfo --summary` should list your GPU with API 1.3 or newer.

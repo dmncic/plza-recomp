@@ -69,7 +69,9 @@ cp tools/{gen,lifter,analyze,nso,passes,patches,simd_c}.py "$O/gen/"
 cp -a "$L/toolchain/zig" "$O/zig"
 Z=$O/zig/lib
 for d in "$Z"/libc/include/*; do
-    case "$(basename "$d")" in generic-glibc|any-linux-any|x86-linux-any|x86_64-linux-any|x86_64-linux-gnu) ;; *) rm -rf "$d" ;; esac
+    # (x86-linux-gnu: zig 0.17's glibc headers for x86-64 too - without them a system with no C headers, like SteamOS,
+    # can't compile the game code)
+    case "$(basename "$d")" in generic-glibc|any-linux-any|x86-linux-any|x86-linux-gnu|x86_64-linux-any|x86_64-linux-gnu) ;; *) rm -rf "$d" ;; esac
 done
 for d in "$Z"/libc/*; do case "$(basename "$d")" in include|glibc) ;; *) rm -rf "$d" ;; esac; done
 rm -rf "$Z/libcxx" "$Z/libcxxabi" "$Z/libtsan" "$Z/libunwind" "$Z/docs" "$Z/build-web" "$Z/init" "$O/zig/doc" "$O/zig/README.md"
@@ -80,6 +82,12 @@ cp runtime/{cpu.h,simd.h,simd_fp.h,gamelib.h} tools/gamelib_entry.c runtime/hle/
 zstd -q -d -f data/pgo/za.clang21.profdata.zst -o "$O/gamelib-src/pgo.profdata"
 cp docs/icon/icon_1024.png "$O/icon.png"
 cp third_party/fonts/Baloo2/Baloo2-SemiBold.ttf data/shader_manifest.txt "$O/"
+
+# Lumiose Online (the launcher's PLAY ONLINE): that fork's runtime and scripts, built with this toolchain (ONLINE=0: none)
+if [ "${ONLINE:-1}" = 1 ]; then
+    say "Lumiose Online (PLAY ONLINE)"
+    tools/linux/build_online.sh "$O/online"
+fi
 
 # licenses: this project's, then every bundled component's
 cp LICENSE "$O/LICENSE.txt"

@@ -12,7 +12,8 @@
 // from that folder at once; LARECOMP_CHEATS_DOWNLOAD=1 downloads the cheat database; LARECOMP_SETUP_FILES=<base>|<update>|<dlc>|<keys> from those packages; LARECOMP_MOD_INSTALL=<file or folder> installs a translation at once;
 // LARECOMP_LAUNCHER_KEYS=1 opens the keyboard section, =<slot> also waits for a new key for that input
 // (runtime/input_bind.h BIND_*), and <slot>:<key name> presses that key for it; LARECOMP_LAUNCHER_PAGE=options|
-// controls|files|mods opens that launcher page; LARECOMP_LAUNCHER_SIZE=<w>x<h> makes the launcher's window that size.
+// controls|files|mods opens that launcher page; LARECOMP_LAUNCHER_SIZE=<w>x<h> makes the launcher's window that size;
+// LARECOMP_LAUNCHER_ONLINE=<frame>[:go] presses PLAY ONLINE at that frame (:go: and Start online in its notice).
 // Any window size: drawn for 1280x720 and scaled to the window (ui_scale_*: a window the desktop stretched, F11 /
 // Alt+Enter fullscreen, a TV). A controller drives all of it: A selects, B goes back, L / R change tabs (the game's
 // own A and B: bindings.c), and the Controller tab's button test is a mode of its own (pad_nav_update).
@@ -1064,6 +1065,69 @@ static void banner(ImDrawList *d, ImVec2 a, ImVec2 b, float t) {
     d->PopClipRect();
 }
 
+// PLAY ONLINE: what Lumiose Online is, the first time (its marker: online/.notice-seen in the data folder), then the
+// launcher exits with 77 and tools/linux/AppRun starts Lumiose Online's own launcher (tools/linux/online/start.sh)
+static bool g_online_ask;
+static void online_go(void) {
+    char p[1200];
+    snprintf(p, sizeof p, "%s/online", rt_data_root());
+    mkdir(p, 0755);
+    snprintf(p, sizeof p, "%s/online/.notice-seen", rt_data_root());
+    if (FILE *f = fopen(p, "w")) fclose(f);
+    settings_save();
+    fprintf(stderr, "[launcher] PLAY ONLINE: Lumiose Online's launcher next\n");
+    plat_exit_status = 77;  // (the exit handler ends the process with it: runtime/platform)
+    exit(77);
+}
+static void online_notice_open(void) {
+    char p[1200];
+    struct stat st;
+    snprintf(p, sizeof p, "%s/online/.notice-seen", rt_data_root());
+    if (stat(p, &st) == 0) online_go();
+    g_online_ask = true;
+}
+static void online_notice(void) {
+    if (g_online_ask) ImGui::OpenPopup("Lumiose Online"), g_online_ask = false;
+    ImGuiViewport *vp = ImGui::GetMainViewport();
+    ImGui::SetNextWindowPos(vp->GetCenter(), ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
+    ImGui::SetNextWindowSize(ImVec2(760, 0));
+    if (!ImGui::BeginPopupModal("Lumiose Online", NULL, ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove)) return;
+    ImGui::PushTextWrapPos(0);
+    ImGui::TextUnformatted(T("Lumiose Online is a community multiplayer mod (TheMagnumChad/PokeZ-ARecomp-Online). It runs on "
+                             "its own build of the game, with its own launcher:",
+                             "O Lumiose Online é um mod multijogador da comunidade (TheMagnumChad/PokeZ-ARecomp-Online). Ele roda "
+                             "na sua própria versão do jogo, com o seu próprio launcher:"));
+    ImGui::Spacing();
+    ImGui::Bullet(); ImGui::TextUnformatted(T("It connects to the Lumiose Online server and downloads mod updates from it. "
+                                              "Those updates aren't signed and are compiled and run on this PC: start it only "
+                                              "if you trust that server.",
+                                              "Ele se conecta ao servidor do Lumiose Online e baixa atualizações do mod de lá. "
+                                              "Elas não são assinadas e são compiladas e executadas neste PC: só inicie se "
+                                              "confiar nesse servidor."));
+    ImGui::Bullet(); ImGui::TextUnformatted(T("It uses a save of its own (a new game): your save here isn't touched.",
+                                              "Ele usa um save próprio (um jogo novo): o seu save daqui não é alterado."));
+    ImGui::Bullet(); ImGui::TextUnformatted(T("The first start builds its own game code and prepares the mod: several minutes "
+                                              "and about 8 GB free. Your game files are shared, not copied.",
+                                              "O primeiro início compila o seu próprio código do jogo e prepara o mod: vários "
+                                              "minutos e cerca de 8 GB livres. Os arquivos do jogo são compartilhados, não copiados."));
+    ImGui::Bullet(); ImGui::TextUnformatted(T("Problems with online play: the LumioseOnline Discord, not this project.",
+                                              "Problemas no modo online: o Discord do LumioseOnline, não este projeto."));
+    ImGui::PopTextWrapPos();
+    ImGui::Spacing();
+    // (Start online only after a moment, and the focus on Cancel: a click or key meant for PLAY ONLINE doesn't agree)
+    static double opened;
+    if (ImGui::IsWindowAppearing()) opened = ImGui::GetTime();
+    const char *t = getenv("LARECOMP_LAUNCHER_ONLINE");  // (test: <frame>:go agrees too)
+    bool test_go = t && strstr(t, ":go") && ImGui::GetTime() - opened > 0.6;
+    ImGui::BeginDisabled(ImGui::GetTime() - opened < 0.5);
+    if (ImGui::Button(T("Start online", "Iniciar online"), ImVec2(240, 0)) || test_go) ImGui::CloseCurrentPopup(), online_go();
+    ImGui::EndDisabled();
+    ImGui::SameLine();
+    if (ImGui::IsWindowAppearing()) ImGui::SetKeyboardFocusHere();
+    if (ImGui::Button(T("Cancel", "Cancelar"), ImVec2(160, 0)) || ImGui::IsKeyPressed(ImGuiKey_Escape)) ImGui::CloseCurrentPopup();
+    ImGui::EndPopup();
+}
+
 // A launcher button: a wide flat bar with its label in Baloo 2; Play is the filled one
 static bool big_button(const char *label, float w, float h, bool primary, bool enabled) {
     ImGui::BeginDisabled(!enabled);
@@ -1690,10 +1754,24 @@ extern "C" void launcher_lg_run(const char *root) {
             float bx = split + 34, bw = W - split - 68, y = 52;
             ImGui::SetCursorScreenPos(ImVec2(bx, y));
             if (frame == 0) ImGui::SetKeyboardFocusHere();
-            if (ready) { if (big_button(T("PLAY", "JOGAR"), bw, 88, true, inst != MOD_INSTALL_RUNNING)) play = true; }
+            // PLAY ONLINE: Lumiose Online (tools/linux/build_online.sh), in the AppImage only; PLAY gets a bit lower
+            static int online = -1;
+            if (online < 0) { char op[1100]; online = rt_resource("online/start.sh", NULL, op, sizeof op); }
+            float ph = ready && online ? 72 : 88;
+            if (ready) { if (big_button(T("PLAY", "JOGAR"), bw, ph, true, inst != MOD_INSTALL_RUNNING)) play = true; }
             else if (big_button(running ? T("SETTING UP...", "PREPARANDO...") : T("SET UP GAME", "PREPARAR O JOGO"), bw, 88, true, !running))
                 page = PAGE_FILES;
-            y += 88 + 28;
+            if (ready && online) {
+                y += ph + 10;
+                ImGui::SetCursorScreenPos(ImVec2(bx, y));
+                static const long online_test = getenv("LARECOMP_LAUNCHER_ONLINE") ? atol(getenv("LARECOMP_LAUNCHER_ONLINE")) : 0;
+                if (big_button(T("PLAY ONLINE", "JOGAR ONLINE"), bw, 58, false, inst != MOD_INSTALL_RUNNING) ||
+                    (online_test && frame == online_test))  // (test: pressed at that frame)
+                    online_notice_open();
+                y += 58 + 18;
+            } else
+                y += 88 + 28;
+            online_notice();
             const struct { const char *en, *pt; int to; } rows[] = {
                 {"OPTIONS", "OPÇÕES", PAGE_OPTIONS}, {"CONTROLS", "CONTROLES", PAGE_CONTROLS},
                 {"GAME FILES", "ARQUIVOS DO JOGO", PAGE_FILES}, {"MODS", "MODS", PAGE_MODS}, {"CHEATS", "CHEATS", PAGE_CHEATS},
